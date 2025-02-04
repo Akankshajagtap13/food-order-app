@@ -1,18 +1,20 @@
-import React from "react";
+import React, { useState, useContext } from "react";
 import Modal from "../UI/Modal";
 import CartItem from "./CartItem";
-import classes from "./Cart.module.css";
-import { useContext, useState } from "react";
-import CartContext from "../../store/cart-context";
 import CheckoutForm from "./CheckoutForm";
-import useFetch from "../hooks/useFetch";
+import classes from "./Cart.module.css";
+import { Button, Box, Typography } from "@mui/material";
+import CartContext from "../../store/cart-context";
+import StripeCheckout from "./StripeCheckout"; // Import the Stripe checkout component
+import OrderTracking from "./OrderTracking"; 
 
 const Cart = (props) => {
   const [order, setOrder] = useState(false);
   const [orderSubmiting, setOrderSubmiting] = useState(false);
   const [orderSubmited, setOrderSubmited] = useState(false);
-  const { handleRequests: sendRequests } = useFetch();
-
+  const [paymentStatus, setPaymentStatus] = useState("pending"); 
+  const [paymentIntent, setPaymentIntent] = useState(null);
+  const [orderId, setOrderId] = useState(null); 
   const cartCtx = useContext(CartContext);
   const totalAmount = cartCtx.totalAmount.toFixed(2);
   const hasItems = cartCtx.items.length > 0;
@@ -31,15 +33,26 @@ const Cart = (props) => {
 
   const submitOrderHandler = (userData) => {
     setOrderSubmiting(true);
-    sendRequests({
-      url: `https://react-http-a3776-default-rtdb.europe-west1.firebasedatabase.app/orders.json`,
-      method: "POST",
-      body: { user: userData, orderedItems: cartCtx.items },
-    });
 
-    setOrderSubmiting(false);
-    setOrderSubmited(true);
-    cartCtx.clearCart()
+    setTimeout(() => {
+      setOrderId(Date.now().toString()); 
+      setOrderSubmiting(false);
+      setOrderSubmited(true);
+      setPaymentStatus("pending");
+    }, 1500);
+
+    cartCtx.clearCart();
+  };
+
+  const handlePaymentSuccess = (paymentIntent) => {
+    setPaymentStatus("success");
+    setPaymentIntent(paymentIntent); 
+    setOrderSubmited(true); 
+  };
+
+  const handlePaymentFailure = (error) => {
+    setPaymentStatus("failed");
+    console.error(error);
   };
 
   const cartItems = (
@@ -73,7 +86,7 @@ const Cart = (props) => {
     <React.Fragment>
       {cartItems}
       <div className={classes.total}>
-        <span>total amount</span>
+        <span>Total Amount</span>
         <span>{totalAmount}</span>
       </div>
       {order && (
@@ -88,9 +101,22 @@ const Cart = (props) => {
   );
 
   const isSubmittingModalContent = <p>Sending order data...</p>;
+
   const didSubmitModalContent = (
     <React.Fragment>
       <p>Successfully sent the order!</p>
+      <Box mt={2}>
+        <Typography variant="h6">Order ID: {orderId}</Typography>
+        {paymentStatus === "pending" && (
+          <StripeCheckout
+            amount={totalAmount * 100}  // Stripe expects amount in cents
+            onSuccess={handlePaymentSuccess}
+            onCancel={props.hideCartHandler}
+          />
+        )}
+        {paymentStatus === "success" && <OrderTracking orderId={orderId} />}
+        {paymentStatus === "failed" && <p>Payment failed. Please try again.</p>}
+      </Box>
       <div className={classes.actions}>
         <button className={classes.button} onClick={props.hideCartHandler}>
           Close
